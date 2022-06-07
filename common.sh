@@ -269,6 +269,47 @@ export EXTRA_WORKER_MEMORY=${EXTRA_WORKER_MEMORY:-${WORKER_MEMORY}}
 export EXTRA_WORKER_DISK=${EXTRA_WORKER_DISK:-${WORKER_DISK}}
 export EXTRA_WORKER_VCPU=${EXTRA_WORKER_VCPU:-${WORKER_VCPU}}
 
+for i in {"COMPACT_IPV4","HA_IPV4","SNO_IPV4"};
+do
+  if [ "$i" == "$AGENT_CONFIG" ] ; then
+    export IP_STACK=v4
+  fi 
+done
+
+for i in {"COMPACT_IPV6","HA_IPV6","SNO_IPV6"};
+do
+  if [ "$i" == "$AGENT_CONFIG" ] ; then
+    export IP_STACK=v6
+  fi 
+done
+
+shopt -s nocasematch
+case "$AGENT_CONFIG" in
+    "COMPACT_IPV4" | "COMPACT_IPV6" )
+        export NUM_MASTERS=3
+        export MASTER_VCPU=4
+        export MASTER_DISK=120
+        export MASTER_MEMORY=16384
+        export NUM_WORKERS=0
+        ;;
+    "HA_IPV4" | "HA_IPV6" )
+        export NUM_MASTERS=3
+        export MASTER_VCPU=4
+        export MASTER_DISK=120
+        export MASTER_MEMORY=16384
+        export NUM_WORKERS=2
+        export WORKER_VCPU=4
+        export WORKER_MEMORY=9000
+        ;;
+    "SNO_IPV4" | "SNO_IPV6" )
+        export NUM_MASTERS=1
+        export MASTER_VCPU=8
+        export MASTER_DISK=120
+        export MASTER_MEMORY=32768
+        export NUM_WORKERS=0
+        ;;
+esac
+
 # Ironic vars (Image can be use <NAME>_LOCAL_IMAGE to override)
 export IRONIC_IMAGE=${IRONIC_IMAGE:-"quay.io/metal3-io/ironic:main"}
 export IRONIC_DATA_DIR="${WORKING_DIR}/ironic"
