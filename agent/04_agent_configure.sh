@@ -60,6 +60,109 @@ function get_static_ips_and_macs() {
     done
 }
 
+function generate_install_config_agent_config_ {
+  num_ips=${#AGENT_NODES_IPS[@]}
+  cat > "${OCP_DIR}/install-config.yaml" << EOF
+apiVersion: v1
+baseDomain: testing.com
+compute:
+  - architecture: amd64
+    hyperthreading: Enabled
+    name: worker
+    platform: {}
+    replicas: ${NUM_WORKERS}
+controlPlane:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: master
+  platform: {}
+  replicas: ${NUM_MASTERS}
+metadata:
+  namespace: cluster-0
+  name:  ${CLUSTER_NAME}
+networking:
+  clusterNetwork:
+    - cidr: ${CLUSTER_NETWORK}
+      hostPrefix: ${CLUSTER_HOST_PREFIX}
+  serviceNetwork:
+    -  ${SERVICE_NETWORK}
+EOF
+if [[ "${AGENT_E2E_TEST_SCENARIO_INSTALL_CONFIG_AGENT_CONFIG}" = "BAREMETAL_HA_IPV4" ]]; then
+cat > "${OCP_DIR}/install-config.yaml" << EOF
+ platform:
+  baremetal:
+    hosts:
+EOF
+    for (( i=0; i<$num_ips; i++ ))
+    do
+cat >> "${OCP_DIR}/install-config.yaml" << EOF
+      - name: host+i
+        bootMACAddress: ${AGENT_NODES_MACS[i]}
+EOF
+# if [[ "${AGENT_E2E_TEST_SCENARIO_INSTALL_CONFIG_AGENT_CONFIG}" != "BAREMETAL_SNO_IPV4" ]]; then
+if [[ "${NUM_MASTERS}" >1 ]]; then
+cat > "${OCP_DIR}/install-config.yaml" << EOF
+    apiVIP: ${API_VIP}
+    ingressVIP: ${INGRESS_VIP}
+EOF
+
+else
+cat > "${OCP_DIR}/install-config.yaml" << EOF
+platform:
+  none:{}
+EOF
+fi
+cat > "${OCP_DIR}/install-config.yaml" << EOF
+publish: External
+pullSecret: '${pull_secret}'
+sshKey: ${SSH_PUB_KEY}
+EOF
+
+  
+  cat > "${OCP_DIR}/agent-config.yaml" << EOF
+apiVersion: v1
+kind: AgentConfig
+metadata:
+  namespace: cluster-0
+  name:  ${CLUSTER_NAME}
+spec:
+  rendezvousIP: ${AGENT_NODES_IPS[0]}
+  hosts:
+EOF
+    for (( i=0; i<$num_ips; i++ ))
+    do
+  cat >> "${OCP_DIR}/agent-config.yaml" << EOF
+    - hostname: control-0.example.org
+      role: master
+      interfaces:
+        - name: eth0
+          macAddress: ${AGENT_NODES_MACS[i]}
+      networkConfig:
+        interfaces:
+          - name: eth0
+            type: ethernet
+            state: up
+            mac-address: ${AGENT_NODES_MACS[i]}
+            ipv4:
+              enabled: true
+              address:
+                - ip: ${AGENT_NODES_IPS[i]}
+                  prefix-length: ${CLUSTER_HOST_PREFIX}
+              dhcp: false
+        dns-resolver:
+          config:
+            server:
+              - ${PROVISIONING_HOST_EXTERNAL_IP}
+        routes:
+          config:
+            - destination: 0.0.0.0/0
+              next-hop-address: ${PROVISIONING_HOST_EXTERNAL_IP}
+              next-hop-interface: eth0
+              table-id: 254
+EOF
+      done
+}
+
 function generate_cluster_manifests() {
 
   MANIFESTS_PATH="${OCP_DIR}/cluster-manifests"
@@ -271,3 +374,10 @@ if [[ "${NUM_MASTERS}" > "1" ]]; then
 fi
 
 generate_cluster_manifests
+
+if [ -z "$AGENT_E2E_TEST_INSTALL_CONFIG_AGENT_CONFIG" ]; then
+  generate_cluster_manifests
+else
+  generate_install_config_agent_config_
+fi
+
